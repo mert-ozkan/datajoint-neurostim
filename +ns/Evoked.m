@@ -4,8 +4,9 @@
 # if a group_fun provided in ns.EvokedParm, it is used to further split
 # into groups.
 # Part tables, ns.EvokedChannel contain actual signal
--> ns.EvokedParm
+-> ns.C
 -> ns.DimensionCondition
+-> ns.EvokedParm
 group : varchar(32)
 ---
 n_epoch: int
@@ -32,7 +33,7 @@ classdef Evoked < dj.Computed & dj.DJInstance
         function v = get.keySource(varargin)
 
             % only those events with some clean epochs
-            v = (ns.DimensionCondition * ns.EvokedParm) & (ns.Epoch & 'flag=""');
+            v = (ns.C * ns.DimensionCondition * ns.EvokedParm) & (ns.Epoch & 'flag=""');
 
         end
 
@@ -49,6 +50,9 @@ classdef Evoked < dj.Computed & dj.DJInstance
             cTbl = ns.C & key & ns.Epoch; % '& ns.Epoch' to make sure there are epochs assoc.
             c_n_row = count(cTbl);
             assert(c_n_row == 1, "There must be only one C table entry associated with the key, found %d.", c_n_row);
+            
+            evp_tpl = fetch(ns.EvokedParm & key, '*');
+
             % ch_qry for later
             ch_qry = sprintf('channel not in (%s)', join(string(cTbl.artifacts.all),','));
 
@@ -58,15 +62,14 @@ classdef Evoked < dj.Computed & dj.DJInstance
             trl_qry = sprintf('trial in (%s)',join(string(dim_tpl.trials),','));
 
             % epoch table
-            eTbl = ns.Epoch & key & trl_qry & 'flag=""'; %only clean epochs
+            eTbl = ns.Epoch & key & trl_qry & evp_tpl.epoch_query; %by default 'flag =""': only clean epochs
             if count(eTbl)==0
 
                 fprintf("\t No clean epochs were found. Skipping...");
                 return;
 
             end
-            % check group_fun
-            evp_tpl = fetch(ns.EvokedParm & key, '*');
+            
 
             if isempty(evp_tpl.group_fun)
 
@@ -96,8 +99,9 @@ classdef Evoked < dj.Computed & dj.DJInstance
                 t_fetch = tic;
                 gru_no = ceil(iGru/2);
                 fprintf("\tFetching signal for Group %d/%d and preparing submission...\n", gru_no, n_gru);
-                if count(groups{iGru+1})==1;
+                if count(groups{iGru+1})==0
                     fprintf("\t\t No clean epochs were found. Skipping the group...\n");
+                    evk_tpl(gru_no) = [];
                     continue;
                 end
                 evk_tpl(gru_no).group = groups{iGru};
